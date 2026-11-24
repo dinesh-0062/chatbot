@@ -5,16 +5,19 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from app.core.config import DATABASE_URL
 
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=5,
-    pool_recycle=1800,
-    connect_args={
-        "sslmode": "require"
-    }
-)
+engine_options = {
+    "pool_pre_ping": True,
+}
+
+if DATABASE_URL.startswith("postgresql"):
+    engine_options.update({
+        "pool_size": 5,
+        "max_overflow": 5,
+        "pool_recycle": 1800,
+        "connect_args": {"sslmode": "require"},
+    })
+
+engine = create_engine(DATABASE_URL, **engine_options)
 
 
 SessionLocal = sessionmaker(

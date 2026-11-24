@@ -1,4 +1,6 @@
 
+import os
+
 import chromadb
 import uuid
 
@@ -7,8 +9,10 @@ class VectorStore:
 
     def __init__(self):
 
+        persist_directory = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
+        os.makedirs(persist_directory, exist_ok=True)
         self.client = chromadb.PersistentClient(
-            path="./chroma_db"
+            path=persist_directory
         )
 
         self.collection = self.client.get_or_create_collection(
@@ -16,7 +20,7 @@ class VectorStore:
             metadata={"hnsw:space": "cosine"}
         )
 
-    def add_documents(self, chunks, embeddings, document_id):
+    def add_documents(self, chunks, embeddings, document_id=None, source_id=None, source_type=None, source_title=None):
 
         if not chunks:
             return 0
@@ -27,18 +31,36 @@ class VectorStore:
             )
 
         ids = [str(uuid.uuid4()) for _ in chunks]
+        metadatas = []
+
+        for index, chunk in enumerate(chunks):
+            metadata = {
+                "source_type": source_type or "pdf",
+                "chunk_index": int(chunk.get("chunk_index", index)),
+                "content_hash": chunk.get("content_hash", ""),
+            }
+            if document_id:
+                metadata.update({
+                    "document_id": document_id,
+                    "source_id": document_id,
+                    "source_title": source_title or "",
+                    "page": int(chunk["page"]),
+                })
+            if source_id:
+                metadata.update({
+                    "source_id": source_id,
+                    "source_title": source_title or "",
+                    "page_url": chunk.get("page_url", ""),
+                    "original_url": chunk.get("original_url", ""),
+                    "page": int(chunk.get("page", 0)),
+                })
+            metadatas.append(metadata)
 
         self.collection.add(
             ids=ids,
             embeddings=embeddings,
             documents=[chunk["text"] for chunk in chunks],
-            metadatas=[
-                {
-                    "document_id": document_id,
-                    "page": int(chunk["page"])
-                }
-                for chunk in chunks
-            ]
+            metadatas=metadatas
         )
 
         return len(ids)
@@ -80,11 +102,18 @@ class VectorStore:
             if distance > distance_threshold:
                 continue
 
+            metadata_document_id = metadata.get("document_id") or metadata.get("source_id")
             retrieved_chunks.append({
                 "text": document,
-                "document_id": metadata["document_id"],
-                "page": metadata["page"],
-                "distance": float(distance)
+                "document_id": metadata_document_id,
+                "source_id": metadata_document_id,
+                "source_type": metadata.get("source_type", "pdf"),
+                "source_title": metadata.get("source_title", ""),
+                "page": metadata.get("page", 0),
+                "page_url": metadata.get("page_url", ""),
+                "original_url": metadata.get("original_url", ""),
+                "distance": float(distance),
+                "chunk_index": metadata.get("chunk_index", 0),
             })
 
         return retrieved_chunks
@@ -92,13 +121,13 @@ class VectorStore:
 
 
     def delete_document(self, document_id: str):
-
-        result = self.collection.get(
-            where={"document_id": document_id},
-            include=[]
-        )
-
-        ids = result["ids"]
+        result = self.collection.get(include=["metadatas"])
+        ids = [
+            chunk_id
+            for chunk_id, metadata in zip(result["ids"], result["metadatas"])
+            if metadata.get("document_id") == document_id
+            or metadata.get("source_id") == document_id
+        ]
 
         if not ids:
             return 0

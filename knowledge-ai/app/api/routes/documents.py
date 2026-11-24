@@ -14,8 +14,8 @@ from app.services.vector_store import VectorStore
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
-UPLOAD_DIR = "data/uploads"
-MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
+UPLOAD_DIR = os.getenv("UPLOAD_DIRECTORY", "data/uploads")
+MAX_FILE_SIZE = int(float(os.getenv("MAX_UPLOAD_SIZE_MB", "20")) * 1024 * 1024)
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -53,7 +53,7 @@ async def upload_document(
         if len(content) > MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=413,
-                detail="PDF size must not exceed 20 MB"
+                detail=f"PDF size must not exceed {os.getenv('MAX_UPLOAD_SIZE_MB', '20')} MB"
             )
 
         if not content.startswith(b"%PDF-"):
@@ -88,7 +88,9 @@ async def upload_document(
         total_chunks = vector_store.add_documents(
             chunks=chunks,
             embeddings=embeddings,
-            document_id=document_id
+            document_id=document_id,
+            source_type="pdf",
+            source_title=os.path.basename(file.filename)[:255]
         )
         vectors_added = True
 
@@ -98,7 +100,8 @@ async def upload_document(
             stored_filename=stored_filename,
             total_pages=len(pages),
             total_chunks=total_chunks,
-            status="completed"
+            status="completed",
+            file_size=len(content)
         )
 
         db.add(document)
@@ -115,6 +118,8 @@ async def upload_document(
                 "total_pages": document.total_pages,
                 "total_chunks": document.total_chunks,
                 "status": document.status,
+                "file_size": document.file_size,
+                "error_message": document.error_message,
                 "created_at": document.created_at
             }
         }
@@ -179,6 +184,8 @@ def get_documents(db: Session = Depends(get_db)):
                 "total_pages": doc.total_pages,
                 "total_chunks": doc.total_chunks,
                 "status": doc.status,
+                "file_size": doc.file_size,
+                "error_message": doc.error_message,
                 "created_at": doc.created_at,
                 "file_exists": os.path.exists(
                     os.path.join(UPLOAD_DIR, doc.stored_filename)

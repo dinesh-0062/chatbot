@@ -9,6 +9,38 @@ function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    const savedConversationId = localStorage.getItem("knowledge-ai-conversation");
+    if (!savedConversationId) return;
+
+    api.get(`/conversations/${savedConversationId}`)
+      .then((response) => {
+        setConversationId(savedConversationId);
+        setMessages(response.data.conversation?.messages || []);
+      })
+      .catch(() => {
+        localStorage.removeItem("knowledge-ai-conversation");
+      });
+  }, []);
+
+  useEffect(() => {
+    const openConversation = (event) => {
+      const id = event.detail;
+      api.get(`/conversations/${id}`)
+        .then((response) => {
+          setConversationId(id);
+          localStorage.setItem("knowledge-ai-conversation", id);
+          setMessages(response.data.conversation?.messages || []);
+          setError("");
+        })
+        .catch((err) => {
+          setError(err.response?.data?.detail || "Could not restore this conversation.");
+        });
+    };
+    window.addEventListener("knowledge-ai-open-conversation", openConversation);
+    return () => window.removeEventListener("knowledge-ai-open-conversation", openConversation);
+  }, []);
+
   const sendMessage = async (question) => {
     if (loading) return;
 
@@ -35,6 +67,7 @@ function ChatPage() {
       }
 
       setConversationId(data.conversation_id);
+      localStorage.setItem("knowledge-ai-conversation", data.conversation_id);
 
       setMessages((previous) => [
         ...previous,
@@ -64,6 +97,7 @@ function ChatPage() {
     setMessages([]);
     setConversationId(null);
     setError("");
+    localStorage.removeItem("knowledge-ai-conversation");
   };
 
   return (

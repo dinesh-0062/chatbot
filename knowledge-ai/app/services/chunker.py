@@ -26,3 +26,12 @@ class TextChunker:
                 start += self.chunk_size - self.overlap
 
         return chunks
+
+    def split_text(self, text):
+        chunks = []
+        start = 0
+        while start < len(text):
+            end = start + self.chunk_size
+            chunks.append({"text": text[start:end], "page": 0})
+            start += self.chunk_size - self.overlap
+        return chunks

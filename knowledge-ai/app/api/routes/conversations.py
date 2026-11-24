@@ -1,4 +1,5 @@
 import uuid
+from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -11,6 +12,10 @@ router = APIRouter(
     prefix="/conversations",
     tags=["Conversations"]
 )
+
+
+class ConversationUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
 
 
 @router.post("/")
@@ -90,6 +95,29 @@ def get_conversation(
                 }
                 for message in conversation.messages
             ]
+        }
+    }
+
+
+@router.patch("/{conversation_id}")
+def update_conversation(
+    conversation_id: str,
+    update: ConversationUpdate,
+    db: Session = Depends(get_db)
+):
+    conversation = db.query(Conversation).filter(
+        Conversation.conversation_id == conversation_id
+    ).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    conversation.title = update.title.strip()
+    db.commit()
+    db.refresh(conversation)
+    return {
+        "success": True,
+        "conversation": {
+            "conversation_id": conversation.conversation_id,
+            "title": conversation.title,
         }
     }
 

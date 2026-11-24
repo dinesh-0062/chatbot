@@ -1,13 +1,17 @@
 
+import os
+
 from sentence_transformers import SentenceTransformer
 
 
 class EmbeddingService:
 
     def __init__(self):
-        self.model = SentenceTransformer(
-            "sentence-transformers/all-MiniLM-L6-v2"
+        model_name = os.getenv(
+            "EMBEDDING_MODEL",
+            "sentence-transformers/all-MiniLM-L6-v2",
         )
+        self.model = SentenceTransformer(model_name)
 
     def generate_embeddings(self, texts):
 
